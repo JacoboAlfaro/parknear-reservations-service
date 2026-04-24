@@ -1,0 +1,63 @@
+import { Injectable } from '@nestjs/common';
+import { desc, eq } from 'drizzle-orm';
+import { DrizzleService } from 'src/database/drizzle.service';
+import * as schema from 'src/database/schema';
+import { EstadoReserva, ReservaRecord } from '../interfaces/reserva.interface';
+
+interface CreateReservaInput {
+  id_conductor: string;
+  id_zona: number;
+  id_vehiculo: string;
+  fecha_real_inicio: Date;
+  fecha_fin: Date | null;
+  precio: string;
+  estado: EstadoReserva;
+}
+
+@Injectable()
+export class ReservasRepository {
+  constructor(private readonly drizzleService: DrizzleService) {}
+
+  private get db() {
+    return this.drizzleService.db;
+  }
+
+  async create(input: CreateReservaInput): Promise<ReservaRecord | null> {
+    const [reserva] = await this.db.insert(schema.reservas).values(input).returning();
+    return reserva ?? null;
+  }
+
+  async findById(id: number): Promise<ReservaRecord | null> {
+    const reserva = await this.db.query.reservas.findFirst({
+      where: eq(schema.reservas.id, id),
+    });
+
+    return reserva ?? null;
+  }
+
+  async findByUserId(userId: string): Promise<ReservaRecord[]> {
+    return this.db
+      .select()
+      .from(schema.reservas)
+      .where(eq(schema.reservas.id_conductor, userId))
+      .orderBy(desc(schema.reservas.id));
+  }
+
+  async updateState(
+    id: number,
+    estado: EstadoReserva,
+    fecha_fin: Date | null,
+  ): Promise<ReservaRecord | null> {
+    const [updatedReserva] = await this.db
+      .update(schema.reservas)
+      .set({
+        estado,
+        fecha_fin,
+        fecha_actualizacion: new Date(),
+      })
+      .where(eq(schema.reservas.id, id))
+      .returning();
+
+    return updatedReserva ?? null;
+  }
+}
