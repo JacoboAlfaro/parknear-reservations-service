@@ -1,5 +1,6 @@
 import { Type } from 'class-transformer';
 import {
+  IsDateString,
   IsEnum,
   IsInt,
   IsISO8601,
@@ -25,9 +26,11 @@ export class CreateReservaDto {
   @MaxLength(10)
   id_vehiculo!: string;
 
+  @IsDateString() 
   fecha_real_inicio!: string;
 
   @IsOptional()
+  @IsDateString()
   fecha_fin?: string;
 
   @Type(() => Number)
