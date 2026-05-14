@@ -46,6 +46,13 @@ export class ReservasController {
 
 	@UseGuards(JwtAuthGuard, RolesGuard)
 	@Roles('ADMIN', 'CONTROLADOR')
+	@Get('zona/:idZona')
+	async findByZonaId(@Param('idZona', ParseIntPipe) idZona: number) {
+		return this.reservasService.findCompleteByZonaId(idZona);
+	}
+
+	@UseGuards(JwtAuthGuard, RolesGuard)
+	@Roles('ADMIN', 'CONTROLADOR')
 	@Put(':id/state')
 	async updateState(
 		@Param('id', ParseIntPipe) id: number,

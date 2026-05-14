@@ -34,6 +34,8 @@ export class ReservasService {
 				throw new BadRequestException('No se pudo crear la reserva');
 			}
 
+			await this.reservasRepository.decrementCapacity(createReservaDto.id_zona);
+
 			return reserva;
 		} catch (error: unknown) {
 			this.handleDbError(error);
@@ -52,6 +54,10 @@ export class ReservasService {
 
 	async findByUserId(userId: string): Promise<ReservaRecord[]> {
 		return this.reservasRepository.findByUserId(userId);
+	}
+
+	async findCompleteByZonaId(zonaId: number) {
+		return this.reservasRepository.findCompleteByZonaId(zonaId);
 	}
 
 	async updateState(id: number, updateReservaStateDto: UpdateReservaStateDto): Promise<ReservaRecord> {
@@ -83,6 +89,15 @@ export class ReservasService {
 
 		if (!updatedReserva) {
 			throw new NotFoundException('Reserva no encontrada');
+		}
+
+		if (
+			(updateReservaStateDto.estado === 'completada' || updateReservaStateDto.estado === 'cancelada') &&
+			(existingReserva.estado !== 'completada' && existingReserva.estado !== 'cancelada')
+		) {
+			if (existingReserva.id_zona) {
+				await this.reservasRepository.incrementCapacity(existingReserva.id_zona);
+			}
 		}
 
 		return updatedReserva;
