@@ -8,18 +8,27 @@ import { ReservasRepository } from './repositories/reservas.repository';
 export class ReservasService {
 	constructor(private readonly reservasRepository: ReservasRepository) {}
 
+	private calcularPrecio(fechaInicio: Date, fechaFin: Date): number {
+		const diffMs = fechaFin.getTime() - fechaInicio.getTime();
+		const diffHours = Math.max(0, diffMs / (1000 * 60 * 60));
+		return Number((diffHours * 3500).toFixed(2));
+	}
+
 	async create(createReservaDto: CreateReservaDto): Promise<ReservaRecord> {
 		try {
+			const fechaInicio = new Date();
+			const fechaFin = new Date(createReservaDto.fecha_fin);
+			const precio = this.calcularPrecio(fechaInicio, fechaFin);
+
 			const reserva = await this.reservasRepository.create({
 					id_conductor: createReservaDto.id_conductor,
 					id_zona: createReservaDto.id_zona,
 					id_vehiculo: createReservaDto.id_vehiculo.toUpperCase(),
-					fecha_real_inicio: new Date(createReservaDto.fecha_real_inicio),
-					fecha_fin: createReservaDto.fecha_fin ? new Date(createReservaDto.fecha_fin) : null,
-					precio: createReservaDto.precio.toFixed(2),
-					estado: createReservaDto.estado ?? 'pendiente',
-				})
-			;
+					fecha_real_inicio: fechaInicio,
+					fecha_fin: fechaFin,
+					precio: precio.toString(),
+					estado: 'pendiente',
+				});
 
 			if (!reserva) {
 				throw new BadRequestException('No se pudo crear la reserva');
@@ -51,16 +60,25 @@ export class ReservasService {
 		const shouldSetEndDate =
 			updateReservaStateDto.estado === 'completada' || updateReservaStateDto.estado === 'cancelada';
 
+		let fechaInicio = existingReserva.fecha_real_inicio;
+		if (existingReserva.estado === 'pendiente' && updateReservaStateDto.estado === 'activa') {
+			fechaInicio = new Date();
+		}
+
 		const fechaFin = updateReservaStateDto.fecha_fin
 			? new Date(updateReservaStateDto.fecha_fin)
 			: shouldSetEndDate
 				? new Date()
 				: existingReserva.fecha_fin;
 
-		const updatedReserva = await this.reservasRepository.updateState(
+		const nuevoPrecio = this.calcularPrecio(fechaInicio, fechaFin ? new Date(fechaFin) : new Date());
+
+		const updatedReserva = await this.reservasRepository.updateStateWithPrice(
 			id,
 			updateReservaStateDto.estado,
 			fechaFin,
+			fechaInicio,
+			nuevoPrecio.toString()
 		);
 
 		if (!updatedReserva) {

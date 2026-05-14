@@ -43,16 +43,20 @@ export class ReservasRepository {
       .orderBy(desc(schema.reservas.id));
   }
 
-  async updateState(
+  async updateStateWithPrice(
     id: number,
     estado: EstadoReserva,
     fecha_fin: Date | null,
+    fecha_real_inicio: Date,
+    precio: string,
   ): Promise<ReservaRecord | null> {
     const [updatedReserva] = await this.db
       .update(schema.reservas)
       .set({
         estado,
         fecha_fin,
+        fecha_real_inicio,
+        precio,
         fecha_actualizacion: new Date(),
       })
       .where(eq(schema.reservas.id, id))
