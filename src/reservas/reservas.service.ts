@@ -11,7 +11,7 @@ export class ReservasService {
 	private calcularPrecio(fechaInicio: Date, fechaFin: Date): number {
 		const diffMs = fechaFin.getTime() - fechaInicio.getTime();
 		const diffHours = Math.max(0, diffMs / (1000 * 60 * 60));
-		return Number((diffHours * 3500).toFixed(2));
+		return Number((diffHours * 3500).toFixed(2)) + 5000; // Tarifa base de 5000 + 3500 por hora
 	}
 
 	async create(createReservaDto: CreateReservaDto): Promise<ReservaRecord> {
@@ -67,17 +67,29 @@ export class ReservasService {
 			updateReservaStateDto.estado === 'completada' || updateReservaStateDto.estado === 'cancelada';
 
 		let fechaInicio = existingReserva.fecha_real_inicio;
+		let fechaFin = existingReserva.fecha_fin;
+
 		if (existingReserva.estado === 'pendiente' && updateReservaStateDto.estado === 'activa') {
-			fechaInicio = new Date();
+			const now = new Date();
+			if (fechaFin) {
+				const durationMs = fechaFin.getTime() - existingReserva.fecha_real_inicio.getTime();
+				fechaInicio = now;
+				fechaFin = new Date(now.getTime() + durationMs);
+			} else {
+				fechaInicio = now;
+			}
 		}
 
-		const fechaFin = updateReservaStateDto.fecha_fin
-			? new Date(updateReservaStateDto.fecha_fin)
-			: shouldSetEndDate
-				? new Date()
-				: existingReserva.fecha_fin;
+		if (updateReservaStateDto.fecha_fin) {
+			fechaFin = new Date(updateReservaStateDto.fecha_fin);
+		} else if (shouldSetEndDate) {
+			fechaFin = new Date();
+		}
 
-		const nuevoPrecio = this.calcularPrecio(fechaInicio, fechaFin ? new Date(fechaFin) : new Date());
+		const calculatedPrice = this.calcularPrecio(fechaInicio, fechaFin ?? new Date());
+		// Nos aseguramos que el precio DB nunca baje de lo que el conductor ya tenía reservado inicialmente
+		// Esto evita conflictos donde un usuario "abandona" antes la reserva y su precio guardado cae bajo lo que ya pagó.
+		const nuevoPrecio = Math.max(Number(existingReserva.precio), calculatedPrice);
 
 		const updatedReserva = await this.reservasRepository.updateStateWithPrice(
 			id,
@@ -100,6 +112,38 @@ export class ReservasService {
 			}
 		}
 
+		return updatedReserva;
+	}
+
+	async extendReserva(id: number, userId: string, fechaFinStr: string): Promise<ReservaRecord> {
+		const reserva = await this.findById(id);
+		
+		if (reserva.id_conductor !== userId) {
+			throw new BadRequestException('No tienes permiso para extender esta reserva');
+		}
+		if (reserva.estado === 'completada' || reserva.estado === 'cancelada') {
+			throw new BadRequestException('No se puede extender una reserva que ya finalizó');
+		}
+
+		const nuevaFechaFin = new Date(fechaFinStr);
+		if (reserva.fecha_fin && nuevaFechaFin <= reserva.fecha_fin) {
+			throw new BadRequestException('La nueva hora fin debe ser mayor a la actual');
+		}
+
+		const nuevoPrecio = this.calcularPrecio(reserva.fecha_real_inicio, nuevaFechaFin);
+		
+		const updatedReserva = await this.reservasRepository.updateStateWithPrice(
+			id,
+			reserva.estado,
+			nuevaFechaFin,
+			reserva.fecha_real_inicio,
+			nuevoPrecio.toString()
+		);
+
+		if (!updatedReserva) {
+			throw new NotFoundException('Reserva no encontrada');
+		}
+		
 		return updatedReserva;
 	}
 
